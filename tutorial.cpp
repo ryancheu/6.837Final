@@ -94,6 +94,7 @@ private:
 
 void Tutorial::initScene( InitialCameraData& camera_data )
 {
+
 	velocity = make_float3(0.5,0.0,0.0);
   // set up path to ptx file associated with tutorial number
   std::stringstream ss;
@@ -217,7 +218,7 @@ void Tutorial::trace( const RayGenCameraData& camera_data )
   m_context["U"]->setFloat( camera_data.U );
   m_context["V"]->setFloat( camera_data.V );
   m_context["W"]->setFloat( camera_data.W );
-  m_context["playerVel"]->setFloat( 0.5f, 0.0f, 0.0f);
+  m_context["playerVel"]->setFloat( 0.1f, 0.0f, 0.0f);
   Buffer buffer = m_context["output_buffer"]->getBuffer();
   RTsize buffer_width, buffer_height;
   buffer->getSize( buffer_width, buffer_height );

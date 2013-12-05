@@ -40,6 +40,116 @@ rtDeclareVariable(float,        scene_epsilon, , );
 rtDeclareVariable(rtObject,     top_object, , );
 
 
+//Color shift variables, used to make guassians for XYZ curves
+#define xla 0.39952807612909519f
+#define xlb 444.63156780935032f
+#define xlc 20.095464678736523f
+
+#define xha 1.1305579611401821f
+#define xhb 593.23109262398259f
+#define xhc 34.446036241271742f
+
+#define ya 1.0098874822455657f
+#define yb 556.03724875218927f
+#define yc 46.184868454550838f
+
+#define za 2.0648400466720593f
+#define zb 448.45126344558236f
+#define zc 22.357297606503543f
+
+//Used to determine where to center UV/IR curves
+#define IR_RANGE 400.0f
+#define IR_START 700.0f
+#define UV_RANGE 380.0f
+#define UV_START 0.0f
+ //Color functions, there's no check for division by 0 which may cause issues on
+//some graphics cards.
+static __inline__ __host__ __device__ float3 RGBToXYZC(  float r,  float g,  float b)
+{
+        float3 xyz;
+        xyz.x = 0.13514*r + 0.120432*g + 0.057128*b;
+        xyz.y = 0.0668999*r + 0.232706*g + 0.0293946*b;
+        xyz.z = 0.0*r + 0.0000218959*g + 0.358278*b;
+        return xyz;
+}
+static __inline__ __host__ __device__ float3 XYZToRGBC(  float x,  float y,  float z)
+{
+        float3 rgb;
+        rgb.x = (9.94845*x) - (5.1485*y) - 1.16389*z;
+        rgb.y = -2.86007*x + 5.77745*y - 0.0179627*z;
+        rgb.z = 0.000174791*x - 0.000353084*y + 2.79113*z;
+
+        return rgb;
+}
+static __inline__ __host__ __device__ float3 weightFromXYZCurves(float3 xyz)
+{
+        float3 returnVal;
+        returnVal.x = (0.0735806 * xyz.x) - (0.0380793 * xyz.y) - (0.00860837 * xyz.z);
+        returnVal.y = (-0.0665378 * xyz.x) +  (0.134408 * xyz.y) - (0.000417865 * xyz.z);
+        returnVal.z = (0.00000299624 * xyz.x) - (0.00000605249 * xyz.y) + (0.0484424 * xyz.z);
+        return returnVal;
+}
+        
+static __inline__ __host__ __device__ float getXFromCurve(float3 param,  float shift)
+{
+            float top1 = param.x * xla * exp( (float)(-(pow((param.y*shift) - xlb,2)
+                /(2.0f*(pow(param.z*shift,2)+pow(xlc,2))))))*sqrt( (float)(float(2)*(float)3.14159265358979323));
+            float bottom1 = sqrt((float)(1.0f/pow(param.z*shift,2))+(1.0f/pow(xlc,2))); 
+
+            float top2 = param.x * xha * exp( float(-(pow((param.y*shift) - xhb,2)
+                /(2.0f*(pow(param.z*shift,2)+pow(xhc,2))))))*sqrt( (float)(float(2)*(float)3.14159265358979323));
+            float bottom2 = sqrt((float)(1.0f/pow(param.z*shift,2))+(1.0f/pow(xhc,2)));
+
+        return (top1/bottom1) + (top2/bottom2);
+}
+static __inline__ __host__ __device__ float getYFromCurve(float3 param,  float shift)
+{
+            float top = param.x * ya * exp( float(-(pow((param.y*shift) - yb,2)
+                /(2.0f*(pow(param.z*shift,2)+pow(yc,2))))))*sqrt( float(float(2)*(float)3.14159265358979323));
+            float bottom = sqrt((float)(1.0f/pow(param.z*shift,2))+(1.0f/pow(yc,2))); 
+
+        return top/bottom;
+}
+
+static __inline__ __host__ __device__ float getZFromCurve(float3 param,  float shift)
+{
+            float top = param.x * za * exp( float(-(pow((param.y*shift) - zb,2)
+                /(2.0f*(pow(param.z*shift,2)+pow(zc,2))))))*sqrt( float(float(2)*(float)3.14159265358979323));
+            float bottom = sqrt((float)(1.0f/pow(param.z*shift,2))+(1.0f/pow(zc,2)));
+
+        return top/bottom;
+}
+        
+static __inline__ __host__ __device__ float3 constrainRGB( float r,  float g,  float b)
+{
+        float w;
+            
+        w = (0 < r) ? 0 : r;
+        w = (w < g) ? w : g;
+        w = (w < b) ? w : b;
+        w = -w;
+            
+        if (w > 0) {
+                r += w;  g += w; b += w;
+        }
+        w = r;
+        w = ( w < g) ? g : w;
+        w = ( w < b) ? b : w;
+
+        if ( w > 1 )
+        {
+                r /= w;
+                g /= w;
+                b /= w;
+        }        
+        float3 rgb;
+        rgb.x = r;
+        rgb.y = g;
+        rgb.z = b;
+        return rgb;
+
+};   
+
 //
 // Pinhole camera implementation
 //
@@ -86,12 +196,50 @@ RT_PROGRAM void pinhole_camera()
 
   rtTrace(top_object, ray, prd);
 
-  if ( q >= 0.0) { 
-		output_buffer[launch_index] = make_color( prd.result );
+
+
+    float speed = length(playerVel);
+	float vuDot = dot(playerVel, prd.viw);
+	float3 uparra;
+	if ( speed != 0 )
+	{
+		uparra = (vuDot/(speed*speed)) * playerVel;
+	}
+	else
+	{
+		uparra = make_float3(0.0f);
+	}
+	float3 uperp = prd.viw - uparra;
+	float3 vr = (playerVel - uparra - (sqrt(1.0f-(speed*speed)))*uperp)/(1.0f+vuDot);
+			
+	float costheta = dot(ray_direction, vr) / (length(ray_direction)*length(vr));
+	float vc = length(vr);
+
+		// ( 1 - (v/c)cos(theta) ) / sqrt ( 1 - (v/c)^2 )
+	float shift = ( 1.0f - vc*costheta) / sqrt ( 1.0f - (vc*vc));
+	//shift = 1.0f - shift;
+	float3 rgb = prd.result;
+                        
+    //Color shift due to doppler, go from RGB -> XYZ, shift, then back to RGB.
+    float3 xyz = RGBToXYZC(float(rgb.x),float(rgb.y),float(rgb.z));
+    float3 weights = weightFromXYZCurves(xyz);
+    float3 rParam,gParam,bParam;
+    rParam.x = weights.x; rParam.y = ( float) 615; rParam.z = ( float)8;
+    gParam.x = weights.y; gParam.y = ( float) 550; gParam.z = ( float)4;
+    bParam.x = weights.z; bParam.y = ( float) 463; bParam.z = ( float)5; 
+                
+    float xf = pow((1.0/shift),3)*getXFromCurve(rParam, shift) + getXFromCurve(gParam,shift) + getXFromCurve(bParam,shift);
+    float yf = pow((1.0/shift),3)*getYFromCurve(rParam, shift) + getYFromCurve(gParam,shift) + getYFromCurve(bParam,shift);
+    float zf = pow((1.0/shift),3)*getZFromCurve(rParam, shift) + getZFromCurve(gParam,shift) + getZFromCurve(bParam,shift);
+                
+    float3 rgbFinal = XYZToRGBC(xf,yf,zf);
+    rgbFinal = constrainRGB(rgbFinal.x,rgbFinal.y, rgbFinal.z); //might not be needed
+
+    if ( shift >= -0.1) { 
+		output_buffer[launch_index] = make_color(rgbFinal);
   } else {
 	output_buffer[launch_index] = make_color( make_float3(0.0f,1.0f,0.0f) );
   }
-  
 }
 
 
@@ -289,6 +437,7 @@ RT_PROGRAM void box_closest_hit_radiance()
 			*/
 
 		//color
+      prd_radiance.viw = passedVelocity;
 	  prd_radiance.result = color;//(make_float3(1.0,0.0,0.0));
 			
   
@@ -303,6 +452,7 @@ rtDeclareVariable(float3, bg_color, , );
 RT_PROGRAM void miss()
 {
   prd_radiance.result = bg_color;
+  prd_radiance.viw = make_float3(0.0,0.0,0.0);
 }
   
 
