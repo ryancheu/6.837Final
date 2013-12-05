@@ -217,7 +217,7 @@ void Tutorial::trace( const RayGenCameraData& camera_data )
   m_context["U"]->setFloat( camera_data.U );
   m_context["V"]->setFloat( camera_data.V );
   m_context["W"]->setFloat( camera_data.W );
-
+  m_context["playerVel"]->setFloat( 0.5f, 0.0f, 0.0f);
   Buffer buffer = m_context["output_buffer"]->getBuffer();
   RTsize buffer_width, buffer_height;
   buffer->getSize( buffer_width, buffer_height );
@@ -259,7 +259,7 @@ void Tutorial::createGeometry()
   box0->setIntersectionProgram( box_intersect );
   box0["boxmin"]->setFloat( 12.0f, 0.0f, -2.0f );
   box0["boxmax"]->setFloat(  16.0f, 7.0f,  2.0f );
-  box0["boxvelocity"]->setFloat( 0.5f, 0.0f, 0.0f);
+  box0["boxvelocity"]->setFloat( 0.0f, 0.0f, 0.0f);
 
 
   // Create box
@@ -269,7 +269,7 @@ void Tutorial::createGeometry()
   m_box->setIntersectionProgram( box_intersect );
   m_box["boxmin"]->setFloat( -2.0f, 0.0f, -2.0f );
   m_box["boxmax"]->setFloat(  2.0f, 7.0f,  2.0f );
-  m_box["boxvelocity"]->setFloat( 0.5f, 0.0f, 0.0f);
+  m_box["boxvelocity"]->setFloat( 0.0f, 0.0f, 0.0f);
 
   // Create box
   Geometry box2 = m_context->createGeometry();
@@ -278,7 +278,7 @@ void Tutorial::createGeometry()
   box2->setIntersectionProgram( box_intersect );
   box2["boxmin"]->setFloat( -16.0f, 0.0f, -2.0f );
   box2["boxmax"]->setFloat(  -12.0f, 7.0f,  2.0f );
-  box2["boxvelocity"]->setFloat( 0.7f, 0.0f, 0.0f);
+  box2["boxvelocity"]->setFloat( 0.3f, 0.0f, 0.0f);
 
 
     // Create box
@@ -288,7 +288,8 @@ void Tutorial::createGeometry()
   box3->setIntersectionProgram( box_intersect );
   box3["boxmin"]->setFloat( -100.0f, -2.0f, -100.0f );
   box3["boxmax"]->setFloat(  100.0f, -3.0f,  100.0f );
-  box3["boxvelocity"]->setFloat( 0.5f, 0.0f, 0.0f);
+  box3["playerVel"]->setFloat( 0.5f, 0.0f, 0.0f);
+  box3["boxvelocity"]->setFloat( 0.0f, 0.0f, 0.0f);
 
   // Create chull
   Geometry chull = 0;
@@ -368,7 +369,6 @@ void Tutorial::createGeometry()
   box_matl["Ks"]->setFloat( 0.8f, 0.9f, 0.8f );
   box_matl["phong_exp"]->setFloat( 88 );
   box_matl["reflectivity_n"]->setFloat( 0.2f, 0.2f, 0.2f );
-  box_matl["playerVel"]->setFloat( 0.5f, 0.0f, 0.0f);
 
 
     Material box_matl1 = m_context->createMaterial();
@@ -383,7 +383,6 @@ void Tutorial::createGeometry()
   box_matl1["Ks"]->setFloat( 0.8f, 0.9f, 0.8f );
   box_matl1["phong_exp"]->setFloat( 88 );
   box_matl1["reflectivity_n"]->setFloat( 0.2f, 0.2f, 0.2f );
-  box_matl1["playerVel"]->setFloat( 0.5f, 0.0f, 0.0f);
 
 
     Material box_matl2 = m_context->createMaterial();
@@ -398,7 +397,6 @@ void Tutorial::createGeometry()
   box_matl2["Ks"]->setFloat( 0.8f, 0.9f, 0.8f );
   box_matl2["phong_exp"]->setFloat( 88 );
   box_matl2["reflectivity_n"]->setFloat( 0.2f, 0.2f, 0.2f );
-  box_matl2["playerVel"]->setFloat( 0.5f, 0.0f, 0.0f);
 
 
   Material box_matl3 = m_context->createMaterial();
@@ -413,7 +411,6 @@ void Tutorial::createGeometry()
   box_matl3["Ks"]->setFloat( 0.8f, 0.9f, 0.8f );
   box_matl3["phong_exp"]->setFloat( 88 );
   box_matl3["reflectivity_n"]->setFloat( 0.2f, 0.2f, 0.2f );
-  box_matl3["playerVel"]->setFloat( 0.5f, 0.0f, 0.0f);
 
   std::string floor_chname;
   if(m_tutnum >= 7){
@@ -577,7 +574,7 @@ int main( int argc, char** argv )
   try {
     Tutorial scene(tutnum, texture_path);
     scene.setDimensions( width, height );
-    GLUTDisplay::run( title.str(), &scene );
+    GLUTDisplay::run( title.str(), &scene, GLUTDisplay::CDAnimated);
   } catch( Exception& e ){
     sutilReportError( e.getErrorString().c_str() );
     exit(1);

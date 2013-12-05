@@ -25,6 +25,7 @@
 rtDeclareVariable(float3, geometric_normal, attribute geometric_normal, ); 
 rtDeclareVariable(float3, shading_normal,   attribute shading_normal, );
 rtDeclareVariable(float3, worldHitPoint, attribute worldHitPoint, ); 
+rtDeclareVariable(float3, passedVelocity, attribute passedVelocity, );
 
 rtDeclareVariable(PerRayData_radiance, prd_radiance, rtPayload, );
 rtDeclareVariable(PerRayData_shadow,   prd_shadow,   rtPayload, );
@@ -48,6 +49,7 @@ rtDeclareVariable(float3,        V, , );
 rtDeclareVariable(float3,        W, , );
 rtDeclareVariable(float3,        bad_color, , );
 rtBuffer<uchar4, 2>              output_buffer;
+rtDeclareVariable(float3, playerVel, , );
 
 RT_PROGRAM void pinhole_camera()
 {
@@ -57,7 +59,26 @@ RT_PROGRAM void pinhole_camera()
   float3 ray_origin = eye;
   float3 ray_direction = normalize(d.x*U + d.y*V + W);
 
-  optix::Ray ray(ray_origin, ray_direction, radiance_ray_type, scene_epsilon);
+  float j = ray_direction.x;
+  float k = ray_direction.y;
+  float l = ray_direction.z;
+
+  float x = playerVel.x;
+  float y = playerVel.y;
+  float z = playerVel.z;
+
+  float q = (sqrt(pow(((-2.0f*j*x) - (2.0f*k*y) - (2.0f*l*z)),2) - (4.0f * ( pow(j,2) + pow(k,2) + pow(l,2))*(pow(x,2) + pow(y,2) + pow(z,2) - 1.0f))) + (2.0f*j*x) + (2.0f*k*y) + (2.0f*l*z))/
+			(2.0*(pow(j,2) + pow(k,2) + pow(l,2)));
+  
+
+  float resx = (j*q) - x;
+  float resy = (k*q) - y;
+  float resz = (l*q) - z;
+
+  float3 new_ray_direction = make_float3(resx,resy,resz);
+
+
+  optix::Ray ray(ray_origin, new_ray_direction, radiance_ray_type, scene_epsilon);
 
   PerRayData_radiance prd;
   prd.importance = 1.f;
@@ -65,7 +86,12 @@ RT_PROGRAM void pinhole_camera()
 
   rtTrace(top_object, ray, prd);
 
-  output_buffer[launch_index] = make_color( prd.result );
+  if ( q >= 0.0) { 
+		output_buffer[launch_index] = make_color( prd.result );
+  } else {
+	output_buffer[launch_index] = make_color( make_float3(0.0f,1.0f,0.0f) );
+  }
+  
 }
 
 
@@ -141,7 +167,6 @@ rtDeclareVariable(float3, metalcolor, , ) = {.7, .7, .7};
 rtDeclareVariable(float, txtscale, , ) = .02;
 rtDeclareVariable(float, rusty, , ) = 0.2;
 rtDeclareVariable(float, rustbump, , ) = 0.85;
-rtDeclareVariable(float3, playerVel, ,);
 rtDeclareVariable(float3, Kd, , );
 #define MAXOCTAVES 0
 
@@ -182,14 +207,14 @@ RT_PROGRAM void box_closest_hit_radiance()
    * account the perturbed normal and shading like matte.
    */
   float3 Nrust = ffnormal;
-  if (rustiness > 0) {
+  if (rustiness > 0) {	
     /* If it's rusty, also add a high frequency bumpiness to the normal */
     Nrust = normalize(ffnormal + rustbump * snoise(PP));
     Nrust = faceforward (Nrust, -ray.direction, world_geo_normal);
   }
 
   float3 color = mix(metalcolor * metalKa, rustcolor * rustKa, rustiness) * ambient_light_color;
-  float3 new_origin = hit_point; //Cast from the point where it would have been in the world reference frame at that point
+  float3 new_origin = worldHitPoint; //Cast from the point where it would have been in the world reference frame at that point
   //float3 new_origin = make_float3(0.0);
   for(int i = 0; i < lights.size(); ++i) {
     BasicLight light = lights[i];
@@ -199,17 +224,17 @@ RT_PROGRAM void box_closest_hit_radiance()
 
     if( nmDl > 0.0f || nrDl > 0.0f ){
       // cast shadow ray
-	  float3 L2 = normalize(light.pos - new_origin); //The direction from the point in the world frame to the light
+	  float3 L2 = normalize(light.pos - worldHitPoint); //The direction from the point in the world frame to the light
       PerRayData_shadow shadow_prd;
       shadow_prd.attenuation = make_float3(t_hit, 0.0, 0.0);
       
-	  float3 newDir = L2 - 2*playerVel;
-	
+	  //float3 newDir = L2 - playerVel;
+	  float3 newDir = L2;
 	  float3 newOriginShadow = new_origin - (t_hit*newDir); //Adjust the start point to account for where the light started
 	  //float3 newOriginShadow = new_origin;
 	  float Ldist = length(light.pos - newOriginShadow);  
 
-      optix::Ray shadow_ray( newOriginShadow, newDir, shadow_ray_type, scene_epsilon*10, Ldist );
+      optix::Ray shadow_ray( newOriginShadow, newDir, shadow_ray_type, scene_epsilon, Ldist );
       rtTrace(top_shadower, shadow_ray, shadow_prd);
       float3 light_attenuation = shadow_prd.attenuation;
 
@@ -239,8 +264,33 @@ RT_PROGRAM void box_closest_hit_radiance()
     color += r * refl_prd.result;
   }
   */
-	  prd_radiance.result = color;
+  
+  /*
+            float speed = length(playerVel);
+			float vuDot = dot(playerVel, passedVelocity);
+			float3 uparra;
+			if ( speed != 0 )
+			{
+				uparra = (vuDot/(speed*speed)) * playerVel;
+			}
+			else
+			{
+				uparra = make_float3(0.0f);
+			}
+			float3 uperp = passedVelocity - uparra;
+			float3 vr = (playerVel - uparra - (sqrt(1-(speed*speed)))*uperp)/(1+vuDot);
+			
+			float costheta = dot(ray.direction, vr) / (length(ray.direction)*length(vr));
+			float vc = 0.8;
 
+			  // ( 1 - (v/c)cos(theta) ) / sqrt ( 1 - (v/c)^2 )
+			float shift = ( 1.0f - vc*costheta) / sqrt ( 1 - (vc*vc));
+			shift = clamp(shift, 0.1f, 0.9f);
+			*/
+
+		//color
+	  prd_radiance.result = color;//(make_float3(1.0,0.0,0.0));
+			
   
 }
 

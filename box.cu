@@ -33,8 +33,7 @@ rtDeclareVariable(float3, texcoord, attribute texcoord, );
 rtDeclareVariable(float3, geometric_normal, attribute geometric_normal, ); 
 rtDeclareVariable(float3, shading_normal, attribute shading_normal, ); 
 rtDeclareVariable(float3, boxvelocity, , );
-rtDeclareVariable(float3, playerVel, , );
-rtDeclareVariable(float3, passedvelocity, attribute passedvelocity ,);
+rtDeclareVariable(float3, passedVelocity, attribute passedVelocity ,);
 rtDeclareVariable(float3, worldHitPoint, attribute worldHitPoint, );
  
 
@@ -49,7 +48,7 @@ static __device__ float3 boxnormal(float t)
 
 RT_PROGRAM void box_intersect(int)
 {
-	float3 testVal = rtTransformVector(RT_WORLD_TO_OBJECT, boxvelocity + playerVel);
+	float3 testVal = rtTransformVector(RT_WORLD_TO_OBJECT, boxvelocity);
 	
   float3 t0 = (boxmin - ray.origin)/(ray.direction-testVal);
   float3 t1 = (boxmax - ray.origin)/(ray.direction-testVal);
@@ -63,7 +62,7 @@ RT_PROGRAM void box_intersect(int)
     if( rtPotentialIntersection( tmin ) ) {
        texcoord = make_float3( 0.0f );
        shading_normal = geometric_normal = boxnormal( tmin );
-	   passedvelocity = testVal;
+	   passedVelocity = boxvelocity;
 	   worldHitPoint = rtTransformPoint(RT_OBJECT_TO_WORLD , ray.origin + (ray.direction*tmin) - (testVal * tmin));
        if(rtReportIntersection(0))
          check_second = false;
@@ -72,7 +71,7 @@ RT_PROGRAM void box_intersect(int)
       if( rtPotentialIntersection( tmax ) ) {
         texcoord = make_float3( 0.0f );
         shading_normal = geometric_normal = boxnormal( tmax );
-		passedvelocity = testVal;
+		passedVelocity = boxvelocity;
 		worldHitPoint = rtTransformPoint(RT_OBJECT_TO_WORLD, ray.origin + (ray.direction*tmax) - (testVal * tmax));
         rtReportIntersection(0);
       }
